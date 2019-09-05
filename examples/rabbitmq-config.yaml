@@ -1,9 +1,9 @@
 url: amqp://guest:guest@localhost:5672//
-use_tls: false
-ca_cert_path:
-client_cert_path:
-client_key_path:
+usetls: false
+cacertpath:
+clientcertpath:
+clientkeypath:
 exchange: test
 reconnect: true
-reconnect_interval: 10
-reconnect_retries: 0
+reconnectinternval: 10
+reconnectretries: 0

@@ -3,31 +3,31 @@ package mqclient
 // RabbitMQConfig rabbitmq client config
 type RabbitMQConfig struct {
 	// URL MQ endpoint url
-	URL string `yaml:"url"`
+	URL string
 
 	// UseTLS whether use tls as underlying connection
-	UseTLS bool `yaml:"use_tls"`
+	UseTLS bool
 
 	// CACertPath MQ CA cert path
-	CACertPath string `yaml:"ca_cert_path"`
+	CACertPath string
 
 	// ClientCertPath MQ Client cert path
-	ClientCertPath string `yaml:"client_cert_path"`
+	ClientCertPath string
 
 	// ClientKeyPath MQ Client key path
-	ClientKeyPath string `yaml:"client_key_path"`
+	ClientKeyPath string
 
 	// Exchange  exchange
-	Exchange string `yaml:"exchange"`
+	Exchange string
 
 	// whether try to reconnect if connection failed
 	// or connection unexpectedly dropped
-	Reconnect bool `yaml:"reconnect"`
+	Reconnect bool `default:"false"`
 
 	// interval in seconds between two reconnect retries
-	ReconnectInternval int `yaml:"reconnect_interval"`
+	ReconnectInternval int `default:"10"`
 
 	// how many times to try making connection
 	// if equal 0, then reconnect forever
-	ReconnectRetries int `yaml:"reconnect_retries"`
+	ReconnectRetries int `default:"0"`
 }
