@@ -58,6 +58,6 @@ func main() {
 	client.Disconnect()
 }
 
-func onMessage(payload *mqclient.Payload) {
+func onMessage(payload *mqclient.Message) {
 	log.WithFields(log.Fields{"tag": "client"}).Infof("got message: %v", payload)
 }

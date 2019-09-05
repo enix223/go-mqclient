@@ -464,7 +464,7 @@ func (r *RBClient) subscribe(sub *rbSubscription, topic string) error {
 			case d, ok := <-msgs:
 				// publish message to consumers
 				if ok && sub.onMessage != nil {
-					sub.onMessage(&Payload{Topic: d.RoutingKey, Body: d.Body})
+					sub.onMessage(&Message{Topic: d.RoutingKey, Body: d.Body})
 				}
 			case <-sub.closeCh:
 				// unsubscribe, so clean up binding

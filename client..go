@@ -7,7 +7,7 @@ import "errors"
 type OnDisconnect func(error)
 
 // OnMessage message income callback
-type OnMessage func(payload *Payload)
+type OnMessage func(message *Message)
 
 // Client an interface for message queue client
 type Client interface {
@@ -30,8 +30,8 @@ type subscription struct {
 	onMessage OnMessage
 }
 
-// Payload MQ payload
-type Payload struct {
+// Message MQ message
+type Message struct {
 	Topic string
 	Body  []byte
 }

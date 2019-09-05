@@ -397,7 +397,7 @@ func (m *MQTTClient) onMessage(c mqtt.Client, msg mqtt.Message) {
 	).Debugf("Got mqtt topic: %s, payload: %v", msg.Topic(), msg.Payload())
 
 	if sub, ok := m.subscriptions.Load(msg.Topic()); ok && sub.(*subscription).onMessage != nil {
-		sub.(*subscription).onMessage(&Payload{
+		sub.(*subscription).onMessage(&Message{
 			Topic: msg.Topic(),
 			Body:  msg.Payload(),
 		})
