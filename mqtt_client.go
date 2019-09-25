@@ -89,7 +89,7 @@ func (m *MQTTClient) connect() error {
 	// connection lost handler
 	opts.SetConnectionLostHandler(m.onDisconnect)
 	// message handler
-	opts.SetDefaultPublishHandler(m.onMessage)
+	opts.SetDefaultPublishHandler(m.handleDefaultMessage)
 
 	log.WithFields(
 		log.Fields{"tag": "mqtt_client", "method": "Connect"},
@@ -250,7 +250,7 @@ func (m *MQTTClient) subscribe(sub *subscription, topic string) error {
 
 	m.connectionM.RLock()
 	defer m.connectionM.RUnlock()
-	token := m.connection.Subscribe(topic, byte(qos), m.onMessage)
+	token := m.connection.Subscribe(topic, byte(qos), m.onMessage(sub))
 	if !token.WaitTimeout(timeout) {
 		log.WithFields(
 			log.Fields{"tag": "mqtt_client", "method": "subscribe", "topic": topic, "err": ErrTimeout},
@@ -391,19 +391,31 @@ func (m *MQTTClient) resubscribe() {
 	})
 }
 
-func (m *MQTTClient) onMessage(c mqtt.Client, msg mqtt.Message) {
-	log.WithFields(
-		log.Fields{"tag": "mqtt_client", "method": "onMessage"},
-	).Debugf("Got mqtt topic: %s, payload: %v", msg.Topic(), msg.Payload())
+// process default incominig message
+// 1. Single Level: +
+//		a single-level wildcard replaces one topic level.
+// 		The plus symbol represents a single-level wildcard in a topic.
+// 2. Multi Level: #
+// 		the multi-level wildcard must be placed as the last character in the topic
+// 		and preceded by a forward slash
+func (m *MQTTClient) handleDefaultMessage(c mqtt.Client, msg mqtt.Message) {
+	log.WithFields(log.Fields{
+		"tag":     "mqtt_client",
+		"method":  "handleDefaultMessage",
+		"topic":   msg.Topic(),
+		"payload": msg.Payload(),
+	}).Debugf("No message handler, fallback to default")
+}
 
-	if sub, ok := m.subscriptions.Load(msg.Topic()); ok && sub.(*subscription).onMessage != nil {
-		sub.(*subscription).onMessage(&Message{
+func (m *MQTTClient) onMessage(sub *subscription) mqtt.MessageHandler {
+	return func(c mqtt.Client, msg mqtt.Message) {
+		log.WithFields(
+			log.Fields{"tag": "mqtt_client", "method": "onMessage"},
+		).Debugf("Got mqtt topic: %s, payload: %v", msg.Topic(), msg.Payload())
+
+		sub.onMessage(&Message{
 			Topic: msg.Topic(),
 			Body:  msg.Payload(),
 		})
-	} else {
-		log.WithFields(
-			log.Fields{"tag": "mqtt_client", "method": "onMessage"},
-		).Warnf("Message callback is missing for topic: %v", msg.Topic())
 	}
 }
