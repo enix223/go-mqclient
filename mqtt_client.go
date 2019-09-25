@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"io/ioutil"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -409,9 +410,22 @@ func (m *MQTTClient) handleDefaultMessage(c mqtt.Client, msg mqtt.Message) {
 
 func (m *MQTTClient) onMessage(sub *subscription) mqtt.MessageHandler {
 	return func(c mqtt.Client, msg mqtt.Message) {
-		log.WithFields(
-			log.Fields{"tag": "mqtt_client", "method": "onMessage"},
-		).Debugf("Got mqtt topic: %s, payload: %v", msg.Topic(), msg.Payload())
+		log.WithFields(log.Fields{
+			"tag":    "mqtt_client",
+			"method": "onMessage",
+		}).Debugf("Got mqtt topic: %s, payload: %v", msg.Topic(), msg.Payload())
+
+		defer func() {
+			if err := recover(); err != nil {
+				log.WithFields(log.Fields{
+					"tag":    "mqtt_client",
+					"method": "onMessage",
+					"err":    err,
+				}).Errorf("failed to process mqtt message")
+
+				debug.PrintStack()
+			}
+		}()
 
 		sub.onMessage(&Message{
 			Topic: msg.Topic(),
