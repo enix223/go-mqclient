@@ -411,20 +411,18 @@ func (m *MQTTClient) handleDefaultMessage(c mqtt.Client, msg mqtt.Message) {
 func (m *MQTTClient) onMessage(sub *subscription) mqtt.MessageHandler {
 	return func(c mqtt.Client, msg mqtt.Message) {
 		log.WithFields(log.Fields{
-			"tag":     "mqtt_client",
-			"method":  "onMessage",
-			"topic":   msg.Topic(),
-			"payload": msg.Payload(),
+			"tag":    "mqtt_client",
+			"method": "onMessage",
+			"topic":  msg.Topic(),
 		}).Debugf("Got mqtt topic")
 
 		defer func() {
 			if err := recover(); err != nil {
 				log.WithFields(log.Fields{
-					"tag":     "mqtt_client",
-					"method":  "onMessage",
-					"topic":   msg.Topic(),
-					"payload": msg.Payload(),
-					"err":     err,
+					"tag":    "mqtt_client",
+					"method": "onMessage",
+					"topic":  msg.Topic(),
+					"err":    err,
 				}).Errorf("failed to process mqtt message")
 
 				debug.PrintStack()
