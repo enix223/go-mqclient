@@ -38,9 +38,9 @@ func NewMQTTClient(config MQTTConfig) Client {
 		config: config,
 	}
 
-	if config.ReconnectInternval == 0 {
+	if config.MQTT.ReconnectInternval == 0 {
 		// apply default reconnect interval
-		m.config.ReconnectInternval = defaultReconnectDelay
+		m.config.MQTT.ReconnectInternval = defaultReconnectDelay
 	}
 
 	return m
@@ -61,12 +61,12 @@ func (m *MQTTClient) Connect() error {
 
 func (m *MQTTClient) connect() error {
 	opts := mqtt.NewClientOptions()
-	if m.config.UseTLS {
+	if m.config.MQTT.UseTLS {
 		// Create TLS connection to mqtt server
 		cfg := new(tls.Config)
 		cfg.RootCAs = x509.NewCertPool()
 
-		if ca, err := ioutil.ReadFile(m.config.CACertPath); err == nil {
+		if ca, err := ioutil.ReadFile(m.config.MQTT.CACertPath); err == nil {
 			cfg.RootCAs.AppendCertsFromPEM(ca)
 		} else {
 			log.WithFields(
@@ -78,14 +78,14 @@ func (m *MQTTClient) connect() error {
 		opts = opts.SetTLSConfig(cfg)
 	}
 
-	opts.SetPingTimeout(time.Duration(m.config.PingTimeout) * time.Second)
-	opts.SetConnectTimeout(time.Duration(m.config.ConnectTimeout) * time.Second)
-	opts.SetKeepAlive(time.Duration(m.config.KeepAlive) * time.Second)
+	opts.SetPingTimeout(time.Duration(m.config.MQTT.PingTimeout) * time.Second)
+	opts.SetConnectTimeout(time.Duration(m.config.MQTT.ConnectTimeout) * time.Second)
+	opts.SetKeepAlive(time.Duration(m.config.MQTT.KeepAlive) * time.Second)
 
-	opts.AddBroker(m.config.Host)
-	opts.SetClientID(m.config.ClientID)
-	opts.SetUsername(m.config.Username)
-	opts.SetPassword(m.config.Password)
+	opts.AddBroker(m.config.MQTT.Host)
+	opts.SetClientID(m.config.MQTT.ClientID)
+	opts.SetUsername(m.config.MQTT.Username)
+	opts.SetPassword(m.config.MQTT.Password)
 	opts.SetAutoReconnect(false)
 	// connection lost handler
 	opts.SetConnectionLostHandler(m.onDisconnect)
@@ -105,7 +105,7 @@ func (m *MQTTClient) connect() error {
 	token := m.connection.Connect()
 	m.connectionM.RUnlock()
 
-	if !token.WaitTimeout(time.Duration(m.config.ConnectTimeout) * time.Second) {
+	if !token.WaitTimeout(time.Duration(m.config.MQTT.ConnectTimeout) * time.Second) {
 		log.WithFields(
 			log.Fields{"tag": "mqtt_client", "method": "connect"},
 		).Errorf("Failed to connect MQTT server: %v", ErrTimeout)
@@ -168,7 +168,7 @@ func (m *MQTTClient) PublishTopic(topic string, payload []byte, options map[stri
 	}
 
 	qos := 0
-	timeout := time.Duration(m.config.ConnectTimeout) * time.Second
+	timeout := time.Duration(m.config.MQTT.ConnectTimeout) * time.Second
 	retained := false
 	if options != nil {
 		if v, ok := options["qos"]; ok {
@@ -235,7 +235,7 @@ func (m *MQTTClient) Subscribe(options map[string]interface{}, onMessage OnMessa
 
 func (m *MQTTClient) subscribe(sub *subscription, topic string) error {
 	qos := 0
-	timeout := time.Duration(m.config.SubscribeTokenTimeout) * time.Second
+	timeout := time.Duration(m.config.MQTT.SubscribeTokenTimeout) * time.Second
 	if sub.options != nil {
 		if v, ok := sub.options["qos"]; ok {
 			if vv, ok := v.(int); ok {
@@ -281,7 +281,7 @@ func (m *MQTTClient) UnSubscribe(options map[string]interface{}, topics ...strin
 	}
 
 	var err error
-	timeout := time.Duration(m.config.UnSubscribeTokenTimeout) * time.Second
+	timeout := time.Duration(m.config.MQTT.UnSubscribeTokenTimeout) * time.Second
 	token := m.connection.Unsubscribe(topics...)
 	if !token.WaitTimeout(timeout) {
 		log.WithFields(
@@ -320,7 +320,7 @@ func (m *MQTTClient) onDisconnect(c mqtt.Client, err error) {
 			log.Fields{"tag": "mqtt_client", "method": "onDisconnect"},
 		).Errorf("MQTT Connection dropped: %v", err)
 
-		if m.config.Reconnect {
+		if m.config.MQTT.Reconnect {
 			// need to reconnect
 			err = m.reconnect()
 		}
@@ -337,7 +337,7 @@ func (m *MQTTClient) onDisconnect(c mqtt.Client, err error) {
 }
 
 func (m *MQTTClient) reconnect() error {
-	interval := time.Duration(m.config.ReconnectInternval) * time.Second
+	interval := time.Duration(m.config.MQTT.ReconnectInternval) * time.Second
 	t := time.NewTicker(interval)
 	retries := 0
 
@@ -345,7 +345,7 @@ func (m *MQTTClient) reconnect() error {
 	for {
 		log.WithFields(
 			log.Fields{"tag": "mqtt_client", "method": "onDisconnect"},
-		).Infof("Will reconnect in %d seconds...", m.config.ReconnectInternval)
+		).Infof("Will reconnect in %d seconds...", m.config.MQTT.ReconnectInternval)
 
 		select {
 		case <-t.C:
@@ -366,7 +366,7 @@ func (m *MQTTClient) reconnect() error {
 		}
 
 		retries++
-		if m.config.ReconnectRetries > 0 && retries >= m.config.ReconnectRetries {
+		if m.config.MQTT.ReconnectRetries > 0 && retries >= m.config.MQTT.ReconnectRetries {
 			// stop ticker
 			t.Stop()
 

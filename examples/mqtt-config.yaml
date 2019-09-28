@@ -1,12 +1,13 @@
-cacertpath:
-clientid:
-username: 
-password:
-host: tcp://mqtt.eclipse.org:1883
-usetls: false
-reconnect: true
-reconnectinternval: 10
-reconnectretries: 0
-pingtimeout: 2
-connecttimeout: 4
-keepalive: 5
+mqtt:
+  cacertpath:
+  clientid:
+  username: 
+  password:
+  host: tcp://mqtt.eclipse.org:1883
+  usetls: false
+  reconnect: true
+  reconnectinternval: 10
+  reconnectretries: 0
+  pingtimeout: 2
+  connecttimeout: 4
+  keepalive: 5

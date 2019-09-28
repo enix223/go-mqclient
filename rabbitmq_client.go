@@ -40,17 +40,17 @@ func NewRabbitMQClient(config RabbitMQConfig) Client {
 	r := new(RBClient)
 
 	r.config = config
-	r.exchange = config.Exchange
+	r.exchange = config.RabbitMQ.Exchange
 	if len(r.exchange) == 0 {
 		log.WithFields(
 			log.Fields{"tag": "rabbitmq_client", "method": "Connect"},
 		).Panicf("exchange setting is missing")
 	}
 
-	if len(config.URL) == 0 {
+	if len(config.RabbitMQ.URL) == 0 {
 		// use default url
-		r.config.URL = "amqp://guest:guest@localhost:5671//"
-		r.config.UseTLS = false
+		r.config.RabbitMQ.URL = "amqp://guest:guest@localhost:5671//"
+		r.config.RabbitMQ.UseTLS = false
 	}
 
 	return r
@@ -137,7 +137,7 @@ func (r *RBClient) onChannelClosed(e *amqp.Error) {
 			log.Fields{"tag": "rabbitmq_client", "method": "onChannelClosed"},
 		).Errorf("Channel closed, err: %v", e)
 
-		if r.config.Reconnect {
+		if r.config.RabbitMQ.Reconnect {
 			// need reconnect
 			if err := r.reconnect(); err != nil && err != ErrAlreadyConnected {
 				// reconnect success
@@ -164,7 +164,7 @@ func (r *RBClient) onChannelClosed(e *amqp.Error) {
 // return error if retry exceed the limit
 func (r *RBClient) reconnect() error {
 	// create retry ticker
-	interval := time.Duration(r.config.ReconnectInternval) * time.Second
+	interval := time.Duration(r.config.RabbitMQ.ReconnectInternval) * time.Second
 	t := time.NewTicker(interval)
 	retries := 0
 
@@ -175,7 +175,7 @@ func (r *RBClient) reconnect() error {
 	for {
 		log.WithFields(
 			log.Fields{"tag": "rabbitmq_client", "method": "Connect"},
-		).Infof("Will reconnect in %d seconds...", r.config.ReconnectInternval)
+		).Infof("Will reconnect in %d seconds...", r.config.RabbitMQ.ReconnectInternval)
 
 		select {
 		case <-t.C:
@@ -210,7 +210,7 @@ func (r *RBClient) reconnect() error {
 		}
 
 		retries++
-		if r.config.ReconnectRetries > 0 && retries >= r.config.ReconnectRetries {
+		if r.config.RabbitMQ.ReconnectRetries > 0 && retries >= r.config.RabbitMQ.ReconnectRetries {
 			// reach max retries
 			t.Stop()
 
@@ -551,12 +551,12 @@ func (r *RBClient) createConnection() error {
 
 	// see a note about Common Name (CN) at the top
 	var err error
-	urlStr := r.config.URL
+	urlStr := r.config.RabbitMQ.URL
 
-	if r.config.UseTLS {
-		sslCACertPath := r.config.CACertPath
-		sslClientCertPath := r.config.ClientCertPath
-		sslClientKeyPath := r.config.ClientKeyPath
+	if r.config.RabbitMQ.UseTLS {
+		sslCACertPath := r.config.RabbitMQ.CACertPath
+		sslClientCertPath := r.config.RabbitMQ.ClientCertPath
+		sslClientKeyPath := r.config.RabbitMQ.ClientKeyPath
 
 		// Use TLS to connect to RabbitMQ
 		cfg := new(tls.Config)
