@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"io/ioutil"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -464,7 +465,7 @@ func (r *RBClient) subscribe(sub *rbSubscription, topic string) error {
 			case d, ok := <-msgs:
 				// publish message to consumers
 				if ok && sub.onMessage != nil {
-					sub.onMessage(&Message{Topic: d.RoutingKey, Body: d.Body})
+					handleMessage(sub, d.RoutingKey, d.Body)
 				}
 			case <-sub.closeCh:
 				// unsubscribe, so clean up binding
@@ -487,6 +488,17 @@ func (r *RBClient) subscribe(sub *rbSubscription, topic string) error {
 		log.Fields{"tag": "rabbitmq_client", "method": "subscribe"},
 	).Infof("Topic %s subscribed.", topic)
 	return nil
+}
+
+// handle incoming message, if onMessage crash, print the stack trace
+func handleMessage(sub *rbSubscription, topic string, body []byte) {
+	defer func() {
+		if err := recover(); err != nil {
+			debug.PrintStack()
+		}
+	}()
+
+	sub.onMessage(&Message{Topic: topic, Body: body})
 }
 
 // UnSubscribe consumer
