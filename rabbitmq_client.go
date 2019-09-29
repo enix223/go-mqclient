@@ -494,6 +494,12 @@ func (r *RBClient) subscribe(sub *rbSubscription, topic string) error {
 func handleMessage(sub *rbSubscription, topic string, body []byte) {
 	defer func() {
 		if err := recover(); err != nil {
+			log.WithFields(log.Fields{
+				"tag":    "rabbitmq_client",
+				"method": "handleMessage",
+				"topic":  topic,
+				"err":    err,
+			}).Error("message handler crash")
 			debug.PrintStack()
 		}
 	}()
