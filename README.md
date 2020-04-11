@@ -35,9 +35,9 @@ make example-mqtt
 ```go
 // 1. Factory to build a MQ client base on given type
 // rabbitmq as backing client
-client := mqclient.CreateMQClient(mqclient.MQTypeRabbitMQ)
+client = rabbitmq.CreateMQClient()
 // or MQTT client
-client := mqclient.CreateMQClient(mqclient.MQTypeMQTT)
+client = mqtt.CreateMQClient()
 
 // 2. Connect to the MQ server
 err := client.Connect();
