@@ -1,4 +1,4 @@
-package mqclient
+package mqtt
 
 import (
 	"crypto/tls"
@@ -8,7 +8,8 @@ import (
 	"sync"
 	"time"
 
-	mqtt "github.com/eclipse/paho.mqtt.golang"
+	gmqtt "github.com/eclipse/paho.mqtt.golang"
+	mqclient "github.com/enix223/go-mqclient"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,22 +20,22 @@ const (
 	mqttTimeout = time.Duration(10 * time.Second)
 )
 
-// MQTTClient mqtt client
-type MQTTClient struct {
-	config MQTTConfig
+// Client mqtt client
+type Client struct {
+	config Config
 
 	connectionM   sync.RWMutex
-	connection    mqtt.Client
+	connection    gmqtt.Client
 	stopReconnect chan struct{}
 
-	disconnectCb OnDisconnect
+	disconnectCb mqclient.OnDisconnect
 
 	subscriptions sync.Map
 }
 
-// NewMQTTClient create a new mqtt client
-func NewMQTTClient(config MQTTConfig) Client {
-	m := &MQTTClient{
+// NewClient create a new mqtt client
+func NewClient(config Config) mqclient.Client {
+	m := &Client{
 		config: config,
 	}
 
@@ -47,7 +48,7 @@ func NewMQTTClient(config MQTTConfig) Client {
 }
 
 // Connect make connection to mqtt server
-func (m *MQTTClient) Connect() error {
+func (m *Client) Connect() error {
 	m.stopReconnect = make(chan struct{})
 
 	// clear subscriptions
@@ -59,8 +60,8 @@ func (m *MQTTClient) Connect() error {
 	return m.connect()
 }
 
-func (m *MQTTClient) connect() error {
-	opts := mqtt.NewClientOptions()
+func (m *Client) connect() error {
+	opts := gmqtt.NewClientOptions()
 	if m.config.MQTT.UseTLS {
 		// Create TLS connection to mqtt server
 		cfg := new(tls.Config)
@@ -98,7 +99,7 @@ func (m *MQTTClient) connect() error {
 
 	//create and start a client using the above ClientOptions
 	m.connectionM.Lock()
-	m.connection = mqtt.NewClient(opts)
+	m.connection = gmqtt.NewClient(opts)
 	m.connectionM.Unlock()
 
 	m.connectionM.RLock()
@@ -108,8 +109,8 @@ func (m *MQTTClient) connect() error {
 	if !token.WaitTimeout(time.Duration(m.config.MQTT.ConnectTimeout) * time.Second) {
 		log.WithFields(
 			log.Fields{"tag": "mqtt_client", "method": "connect"},
-		).Errorf("Failed to connect MQTT server: %v", ErrTimeout)
-		return ErrTimeout
+		).Errorf("Failed to connect MQTT server: %v", mqclient.ErrTimeout)
+		return mqclient.ErrTimeout
 	}
 
 	if token.Error() != nil {
@@ -127,20 +128,20 @@ func (m *MQTTClient) connect() error {
 }
 
 // SetOnDisconnect set disconnect callback
-func (m *MQTTClient) SetOnDisconnect(cb OnDisconnect) {
+func (m *Client) SetOnDisconnect(cb mqclient.OnDisconnect) {
 	m.disconnectCb = cb
 }
 
 // Disconnect shutdown the mqtt client
-func (m *MQTTClient) Disconnect() {
+func (m *Client) Disconnect() {
 	log.WithFields(
 		log.Fields{"tag": "mqtt_client", "method": "Disconnect"},
 	).Info("Disconnecting MQTT server...")
 
 	m.subscriptions.Range(func(k, v interface{}) bool {
 		topic := k.(string)
-		sub := v.(*subscription)
-		if err := m.UnSubscribe(sub.options, topic); err != nil {
+		sub := v.(*mqclient.Subscription)
+		if err := m.UnSubscribe(sub.Options, topic); err != nil {
 			log.WithFields(
 				log.Fields{"tag": "mqtt_client", "method": "Disconnect"},
 			).Errorf("Faild to unsubscribe topics: %v", err)
@@ -160,11 +161,11 @@ func (m *MQTTClient) Disconnect() {
 }
 
 // PublishTopic publish topic to the mq server
-func (m *MQTTClient) PublishTopic(topic string, payload []byte, options map[string]interface{}) error {
+func (m *Client) PublishTopic(topic string, payload []byte, options map[string]interface{}) error {
 	m.connectionM.RLock()
 	defer m.connectionM.RUnlock()
 	if !m.connection.IsConnected() {
-		return ErrNotConnected
+		return mqclient.ErrNotConnected
 	}
 
 	qos := 0
@@ -191,9 +192,9 @@ func (m *MQTTClient) PublishTopic(topic string, payload []byte, options map[stri
 	token := m.connection.Publish(topic, byte(qos), retained, payload)
 	if !token.WaitTimeout(timeout) {
 		log.WithFields(
-			log.Fields{"tag": "mqtt_client", "method": "PublishTopic", "err": ErrTimeout, "topic": topic},
+			log.Fields{"tag": "mqtt_client", "method": "PublishTopic", "err": mqclient.ErrTimeout, "topic": topic},
 		).Errorf("Failed to publish topic")
-		return ErrTimeout
+		return mqclient.ErrTimeout
 	}
 
 	if token.Error() != nil {
@@ -207,20 +208,20 @@ func (m *MQTTClient) PublishTopic(topic string, payload []byte, options map[stri
 }
 
 // Subscribe to given topics
-func (m *MQTTClient) Subscribe(options map[string]interface{}, onMessage OnMessage, topics ...string) error {
+func (m *Client) Subscribe(options map[string]interface{}, onMessage mqclient.OnMessage, topics ...string) error {
 	m.connectionM.RLock()
 	defer m.connectionM.RUnlock()
 	if !m.connection.IsConnected() {
-		return ErrNotConnected
+		return mqclient.ErrNotConnected
 	}
 
 	if len(topics) == 0 {
-		return ErrTopicMissing
+		return mqclient.ErrTopicMissing
 	}
 
-	sub := subscription{
-		options:   options,
-		onMessage: onMessage,
+	sub := mqclient.Subscription{
+		Options:   options,
+		OnMessage: onMessage,
 	}
 
 	for _, topic := range topics {
@@ -233,16 +234,16 @@ func (m *MQTTClient) Subscribe(options map[string]interface{}, onMessage OnMessa
 	return nil
 }
 
-func (m *MQTTClient) subscribe(sub *subscription, topic string) error {
+func (m *Client) subscribe(sub *mqclient.Subscription, topic string) error {
 	qos := 0
 	timeout := time.Duration(m.config.MQTT.SubscribeTokenTimeout) * time.Second
-	if sub.options != nil {
-		if v, ok := sub.options["qos"]; ok {
+	if sub.Options != nil {
+		if v, ok := sub.Options["qos"]; ok {
 			if vv, ok := v.(int); ok {
 				qos = vv
 			}
 		}
-		if v, ok := sub.options["timeout"]; ok {
+		if v, ok := sub.Options["timeout"]; ok {
 			if vv, ok := v.(int); ok {
 				timeout = time.Duration(vv) * time.Second
 			}
@@ -254,9 +255,9 @@ func (m *MQTTClient) subscribe(sub *subscription, topic string) error {
 	token := m.connection.Subscribe(topic, byte(qos), m.onMessage(sub))
 	if !token.WaitTimeout(timeout) {
 		log.WithFields(
-			log.Fields{"tag": "mqtt_client", "method": "subscribe", "topic": topic, "err": ErrTimeout},
+			log.Fields{"tag": "mqtt_client", "method": "subscribe", "topic": topic, "err": mqclient.ErrTimeout},
 		).Errorf("Failed to subscribe topic")
-		return ErrTimeout
+		return mqclient.ErrTimeout
 	}
 
 	if token.Error() != nil {
@@ -273,11 +274,11 @@ func (m *MQTTClient) subscribe(sub *subscription, topic string) error {
 }
 
 // UnSubscribe given topics
-func (m *MQTTClient) UnSubscribe(options map[string]interface{}, topics ...string) error {
+func (m *Client) UnSubscribe(options map[string]interface{}, topics ...string) error {
 	m.connectionM.RLock()
 	defer m.connectionM.RUnlock()
 	if !m.connection.IsConnected() {
-		return ErrNotConnected
+		return mqclient.ErrNotConnected
 	}
 
 	var err error
@@ -285,9 +286,9 @@ func (m *MQTTClient) UnSubscribe(options map[string]interface{}, topics ...strin
 	token := m.connection.Unsubscribe(topics...)
 	if !token.WaitTimeout(timeout) {
 		log.WithFields(
-			log.Fields{"tag": "mqtt_client", "method": "Consume", "topics": topics, "err": ErrTimeout},
+			log.Fields{"tag": "mqtt_client", "method": "Consume", "topics": topics, "err": mqclient.ErrTimeout},
 		).Errorf("unscribe topics failed")
-		err = ErrTimeout
+		err = mqclient.ErrTimeout
 	}
 
 	if token.Error() != nil {
@@ -313,7 +314,7 @@ func (m *MQTTClient) UnSubscribe(options map[string]interface{}, topics ...strin
 	return err
 }
 
-func (m *MQTTClient) onDisconnect(c mqtt.Client, err error) {
+func (m *Client) onDisconnect(c gmqtt.Client, err error) {
 	if err != nil {
 		// disconnect unexpectly
 		log.WithFields(
@@ -336,7 +337,7 @@ func (m *MQTTClient) onDisconnect(c mqtt.Client, err error) {
 	}
 }
 
-func (m *MQTTClient) reconnect() error {
+func (m *Client) reconnect() error {
 	interval := time.Duration(m.config.MQTT.ReconnectInternval) * time.Second
 	t := time.NewTicker(interval)
 	retries := 0
@@ -379,10 +380,10 @@ func (m *MQTTClient) reconnect() error {
 	}
 }
 
-func (m *MQTTClient) resubscribe() {
+func (m *Client) resubscribe() {
 	m.subscriptions.Range(func(k, v interface{}) bool {
 		topic := k.(string)
-		sub := v.(*subscription)
+		sub := v.(*mqclient.Subscription)
 		if err := m.subscribe(sub, topic); err != nil {
 			log.WithFields(
 				log.Fields{"tag": "mqtt_client", "method": ""},
@@ -399,7 +400,7 @@ func (m *MQTTClient) resubscribe() {
 // 2. Multi Level: #
 // 		the multi-level wildcard must be placed as the last character in the topic
 // 		and preceded by a forward slash
-func (m *MQTTClient) handleDefaultMessage(c mqtt.Client, msg mqtt.Message) {
+func (m *Client) handleDefaultMessage(c gmqtt.Client, msg gmqtt.Message) {
 	log.WithFields(log.Fields{
 		"tag":     "mqtt_client",
 		"method":  "handleDefaultMessage",
@@ -408,8 +409,8 @@ func (m *MQTTClient) handleDefaultMessage(c mqtt.Client, msg mqtt.Message) {
 	}).Debugf("No message handler, fallback to default")
 }
 
-func (m *MQTTClient) onMessage(sub *subscription) mqtt.MessageHandler {
-	return func(c mqtt.Client, msg mqtt.Message) {
+func (m *Client) onMessage(sub *mqclient.Subscription) gmqtt.MessageHandler {
+	return func(c gmqtt.Client, msg gmqtt.Message) {
 		log.WithFields(log.Fields{
 			"tag":    "mqtt_client",
 			"method": "onMessage",
@@ -429,7 +430,7 @@ func (m *MQTTClient) onMessage(sub *subscription) mqtt.MessageHandler {
 			}
 		}()
 
-		sub.onMessage(&Message{
+		sub.OnMessage(&mqclient.Message{
 			Topic: msg.Topic(),
 			Body:  msg.Payload(),
 		})

@@ -25,9 +25,10 @@ type Client interface {
 	SetOnDisconnect(OnDisconnect)
 }
 
-type subscription struct {
-	options   map[string]interface{}
-	onMessage OnMessage
+// Subscription message subscription
+type Subscription struct {
+	Options   map[string]interface{}
+	OnMessage OnMessage
 }
 
 // Message MQ message

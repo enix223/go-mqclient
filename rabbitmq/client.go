@@ -1,4 +1,4 @@
-package mqclient
+package rabbitmq
 
 import (
 	"crypto/tls"
@@ -10,12 +10,13 @@ import (
 
 	"github.com/streadway/amqp"
 
+	mqclient "github.com/enix223/go-mqclient"
 	log "github.com/sirupsen/logrus"
 )
 
-// RBClient rabbitmq client
-type RBClient struct {
-	config RabbitMQConfig
+// Client rabbitmq client
+type Client struct {
+	config Config
 
 	connectionM   sync.RWMutex
 	connection    *amqp.Connection
@@ -27,18 +28,18 @@ type RBClient struct {
 
 	exchange string
 
-	disconnectCb  OnDisconnect
+	disconnectCb  mqclient.OnDisconnect
 	subscriptions sync.Map // map[string]rbSubscription
 }
 
 type rbSubscription struct {
-	subscription
+	mqclient.Subscription
 	closeCh chan struct{}
 }
 
-// NewRabbitMQClient create a new MQ Client
-func NewRabbitMQClient(config RabbitMQConfig) Client {
-	r := new(RBClient)
+// NewClient create a new MQ Client
+func NewClient(config Config) mqclient.Client {
+	r := new(Client)
 
 	r.config = config
 	r.exchange = config.RabbitMQ.Exchange
@@ -58,12 +59,12 @@ func NewRabbitMQClient(config RabbitMQConfig) Client {
 }
 
 // SetOnDisconnect set disconnect callback
-func (r *RBClient) SetOnDisconnect(cb OnDisconnect) {
+func (r *Client) SetOnDisconnect(cb mqclient.OnDisconnect) {
 	r.disconnectCb = cb
 }
 
 // Connect connect to MQ
-func (r *RBClient) Connect() error {
+func (r *Client) Connect() error {
 	if err := r.connect(); err != nil {
 		return err
 	}
@@ -97,11 +98,11 @@ func (r *RBClient) Connect() error {
 	return nil
 }
 
-func (r *RBClient) connect() error {
+func (r *Client) connect() error {
 	r.connectionM.RLock()
 	if r.connection != nil && r.connection.IsClosed() {
 		r.connectionM.RUnlock()
-		return ErrAlreadyConnected
+		return mqclient.ErrAlreadyConnected
 	}
 	r.connectionM.RUnlock()
 
@@ -123,7 +124,7 @@ func (r *RBClient) connect() error {
 }
 
 // onChannelClosed handel channel close event
-func (r *RBClient) onChannelClosed(e *amqp.Error) {
+func (r *Client) onChannelClosed(e *amqp.Error) {
 	r.connectionM.Lock()
 	r.connection = nil
 	r.connectionM.Unlock()
@@ -138,9 +139,16 @@ func (r *RBClient) onChannelClosed(e *amqp.Error) {
 			log.Fields{"tag": "rabbitmq_client", "method": "onChannelClosed"},
 		).Errorf("Channel closed, err: %v", e)
 
+		// cleanup subscritpions
+		r.subscriptions.Range(func(k, v interface{}) bool {
+			sub := v.(*rbSubscription)
+			sub.closeCh <- struct{}{}
+			return true
+		})
+
 		if r.config.RabbitMQ.Reconnect {
 			// need reconnect
-			if err := r.reconnect(); err != nil && err != ErrAlreadyConnected {
+			if err := r.reconnect(); err != nil && err != mqclient.ErrAlreadyConnected {
 				// reconnect success
 				log.WithFields(
 					log.Fields{"tag": "rabbitmq_client", "method": "onChannelClosed"},
@@ -163,7 +171,7 @@ func (r *RBClient) onChannelClosed(e *amqp.Error) {
 // reconnect try reconnect to the server
 // will return nil if retry ok
 // return error if retry exceed the limit
-func (r *RBClient) reconnect() error {
+func (r *Client) reconnect() error {
 	// create retry ticker
 	interval := time.Duration(r.config.RabbitMQ.ReconnectInternval) * time.Second
 	t := time.NewTicker(interval)
@@ -181,7 +189,7 @@ func (r *RBClient) reconnect() error {
 		select {
 		case <-t.C:
 			// time to reconnect
-			if err = r.connect(); err == nil || err == ErrAlreadyConnected {
+			if err = r.connect(); err == nil || err == mqclient.ErrAlreadyConnected {
 				// connect success
 				t.Stop()
 				log.WithFields(
@@ -225,7 +233,7 @@ func (r *RBClient) reconnect() error {
 }
 
 // Disconnect Disconnect from MQ
-func (r *RBClient) Disconnect() {
+func (r *Client) Disconnect() {
 	// clean up
 	if r.stopReconnect != nil {
 		close(r.stopReconnect)
@@ -259,13 +267,13 @@ func (r *RBClient) Disconnect() {
 }
 
 // PublishTopic produce topic
-func (r *RBClient) PublishTopic(topic string, payload []byte, options map[string]interface{}) error {
+func (r *Client) PublishTopic(topic string, payload []byte, options map[string]interface{}) error {
 	r.connectionM.RLock()
 	r.channelM.RLock()
 	if r.connection == nil || r.channel == nil || r.connection.IsClosed() {
 		r.connectionM.RUnlock()
 		r.channelM.RUnlock()
-		return ErrNotConnected
+		return mqclient.ErrNotConnected
 	}
 	r.connectionM.RUnlock()
 	r.channelM.RUnlock()
@@ -315,13 +323,13 @@ func (r *RBClient) PublishTopic(topic string, payload []byte, options map[string
 // Subscribe subscribe topic
 //
 // Return a channel for consumer to read incoming data when topic is published by producer
-func (r *RBClient) Subscribe(options map[string]interface{}, onMessage OnMessage, topics ...string) error {
+func (r *Client) Subscribe(options map[string]interface{}, onMessage mqclient.OnMessage, topics ...string) error {
 	r.connectionM.RLock()
 	r.channelM.RLock()
 	if r.connection == nil || r.channel == nil || r.connection.IsClosed() {
 		r.connectionM.RUnlock()
 		r.channelM.RUnlock()
-		return ErrNotConnected
+		return mqclient.ErrNotConnected
 	}
 	r.connectionM.RUnlock()
 	r.channelM.RUnlock()
@@ -392,9 +400,9 @@ func (r *RBClient) Subscribe(options map[string]interface{}, onMessage OnMessage
 	}
 
 	sub := rbSubscription{
-		subscription: subscription{
-			options:   opts,
-			onMessage: onMessage,
+		Subscription: mqclient.Subscription{
+			Options:   opts,
+			OnMessage: onMessage,
 		},
 		closeCh: make(chan struct{}),
 	}
@@ -409,16 +417,16 @@ func (r *RBClient) Subscribe(options map[string]interface{}, onMessage OnMessage
 	return nil
 }
 
-func (r *RBClient) subscribe(sub *rbSubscription, topic string) error {
+func (r *Client) subscribe(sub *rbSubscription, topic string) error {
 	// create queue
 	r.channelM.RLock()
 	defer r.channelM.RUnlock()
 	q, err := r.channel.QueueDeclare(
-		sub.options["queueName"].(string), // queue name
-		sub.options["durable"].(bool),     // durable
-		sub.options["delete"].(bool),      // delete when usused
-		sub.options["exclusive"].(bool),   // exclusive
-		sub.options["noWait"].(bool),      // no-wait
+		sub.Options["queueName"].(string), // queue name
+		sub.Options["durable"].(bool),     // durable
+		sub.Options["delete"].(bool),      // delete when usused
+		sub.Options["exclusive"].(bool),   // exclusive
+		sub.Options["noWait"].(bool),      // no-wait
 		nil,                               // arguments
 	)
 	if err != nil {
@@ -432,8 +440,8 @@ func (r *RBClient) subscribe(sub *rbSubscription, topic string) error {
 	err = r.channel.QueueBind(
 		q.Name,                           // queue name
 		topic,                            // routing key
-		sub.options["exchange"].(string), // exchange
-		sub.options["noWait"].(bool),     // no-wait
+		sub.Options["exchange"].(string), // exchange
+		sub.Options["noWait"].(bool),     // no-wait
 		nil,
 	)
 	if err != nil {
@@ -445,11 +453,11 @@ func (r *RBClient) subscribe(sub *rbSubscription, topic string) error {
 
 	msgs, err := r.channel.Consume(
 		q.Name,                           // queue
-		sub.options["consumer"].(string), // consumer
-		sub.options["autoAck"].(bool),    // auto-ack
-		sub.options["exclusive"].(bool),  // exclusive
-		sub.options["noLocal"].(bool),    // no-local
-		sub.options["noWait"].(bool),     // no-wait
+		sub.Options["consumer"].(string), // consumer
+		sub.Options["autoAck"].(bool),    // auto-ack
+		sub.Options["exclusive"].(bool),  // exclusive
+		sub.Options["noLocal"].(bool),    // no-local
+		sub.Options["noWait"].(bool),     // no-wait
 		nil,                              // args
 	)
 	if err != nil {
@@ -464,7 +472,7 @@ func (r *RBClient) subscribe(sub *rbSubscription, topic string) error {
 			select {
 			case d, ok := <-msgs:
 				// publish message to consumers
-				if ok && sub.onMessage != nil {
+				if ok && sub.OnMessage != nil {
 					handleMessage(sub, d.RoutingKey, d.Body)
 				}
 			case <-sub.closeCh:
@@ -504,17 +512,17 @@ func handleMessage(sub *rbSubscription, topic string, body []byte) {
 		}
 	}()
 
-	sub.onMessage(&Message{Topic: topic, Body: body})
+	sub.OnMessage(&mqclient.Message{Topic: topic, Body: body})
 }
 
 // UnSubscribe consumer
-func (r *RBClient) UnSubscribe(options map[string]interface{}, topics ...string) error {
+func (r *Client) UnSubscribe(options map[string]interface{}, topics ...string) error {
 	r.connectionM.RLock()
 	r.channelM.RLock()
 	if r.connection == nil || r.channel == nil || r.connection.IsClosed() {
 		r.connectionM.RUnlock()
 		r.channelM.RUnlock()
-		return ErrNotConnected
+		return mqclient.ErrNotConnected
 	}
 	r.connectionM.RUnlock()
 	r.channelM.RUnlock()
@@ -562,7 +570,7 @@ func (r *RBClient) UnSubscribe(options map[string]interface{}, topics ...string)
 }
 
 // Connect connect to MQ
-func (r *RBClient) createConnection() error {
+func (r *Client) createConnection() error {
 	log.WithFields(
 		log.Fields{"tag": "rabbitmq_client", "method": "createConnection"},
 	).Debugf("Creating connection...")
@@ -621,7 +629,7 @@ func (r *RBClient) createConnection() error {
 }
 
 // createChannel create amqp channel
-func (r *RBClient) createChannel() error {
+func (r *Client) createChannel() error {
 	var err error
 
 	log.WithFields(

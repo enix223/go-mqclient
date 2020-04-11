@@ -2,23 +2,42 @@ package main
 
 import (
 	"flag"
+	"os"
+	"os/signal"
 	"time"
 
 	mqclient "github.com/enix223/go-mqclient"
+	"github.com/enix223/go-mqclient/mqtt"
+	"github.com/enix223/go-mqclient/rabbitmq"
 
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	mqTypeRabbitMQ = "rabbitmq"
+	mqTypeMQTT     = "mqtt"
+)
+
 // specify the MQ client type, default to rabbitmq
-var mqType = flag.String("type", mqclient.MQTypeRabbitMQ, "MQ client type")
+var mqType = flag.String("type", mqTypeRabbitMQ, "MQ client type")
 
 func main() {
 	flag.Parse()
 
 	log.SetLevel(log.DebugLevel)
 
-	// Factory to build a MQ client base on given type
-	client := mqclient.CreateMQClient(*mqType)
+	var client mqclient.Client
+
+	switch *mqType {
+	case mqTypeMQTT:
+		log.Debug("using mqtt")
+		client = mqtt.CreateMQClient()
+	case mqTypeRabbitMQ:
+		log.Debug("using rabbitmq")
+		client = rabbitmq.CreateMQClient()
+	default:
+		panic("invalid type")
+	}
 
 	// Connect to the MQ server
 	if err := client.Connect(); err != nil {
@@ -51,9 +70,10 @@ func main() {
 		}
 	}()
 
-	// You can try to shutdown the broker to test reconnect function now
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, os.Kill)
+	<-c
 
-	time.Sleep(20 * time.Second)
 	// disconnect
 	client.Disconnect()
 }

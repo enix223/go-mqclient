@@ -1,7 +1,7 @@
-package mqclient
+package mqtt
 
-// MQTTConfig mqtt client config
-type MQTTConfig struct {
+// Config mqtt client config
+type Config struct {
 	MQTT struct {
 		// ca cert path, need to provide when use_tls is on
 		CACertPath string

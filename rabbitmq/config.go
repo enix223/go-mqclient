@@ -1,7 +1,7 @@
-package mqclient
+package rabbitmq
 
-// RabbitMQConfig rabbitmq client config
-type RabbitMQConfig struct {
+// Config rabbitmq client config
+type Config struct {
 	RabbitMQ struct {
 		// URL MQ endpoint url
 		URL string
