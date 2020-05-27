@@ -579,6 +579,9 @@ func (r *Client) createConnection() error {
 	var err error
 	urlStr := r.config.RabbitMQ.URL
 
+	r.connectionM.Lock()
+	defer r.connectionM.Unlock()
+
 	if r.config.RabbitMQ.UseTLS {
 		sslCACertPath := r.config.RabbitMQ.CACertPath
 		sslClientCertPath := r.config.RabbitMQ.ClientCertPath
@@ -606,12 +609,8 @@ func (r *Client) createConnection() error {
 			return err
 		}
 
-		r.connectionM.Lock()
-		defer r.connectionM.Unlock()
 		r.connection, err = amqp.DialTLS(urlStr, cfg)
 	} else {
-		r.connectionM.Lock()
-		defer r.connectionM.Unlock()
 		r.connection, err = amqp.Dial(urlStr)
 	}
 
@@ -619,6 +618,7 @@ func (r *Client) createConnection() error {
 		log.WithFields(
 			log.Fields{"tag": "rabbitmq_client", "method": "createConnection"},
 		).Errorf("Failed to connect to RabbitMQ: %s", err)
+		r.connection = nil
 		return err
 	}
 
