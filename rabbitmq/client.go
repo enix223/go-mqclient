@@ -100,7 +100,7 @@ func (r *Client) Connect() error {
 
 func (r *Client) connect() error {
 	r.connectionM.RLock()
-	if r.connection != nil && r.connection.IsClosed() {
+	if r.connection != nil && !r.connection.IsClosed() {
 		r.connectionM.RUnlock()
 		return mqclient.ErrAlreadyConnected
 	}
