@@ -9,6 +9,15 @@ type Config struct {
 		// UseTLS whether use tls as underlying connection
 		UseTLS bool
 
+		// CACertPEM MQ CA Cert PEM content
+		CACertPEM string
+
+		// ClientCertBody MQ Client cert PEM content
+		ClientCertPEM string
+
+		// ClientKeyPEM MQ client key PEM content
+		ClientKeyPEM string
+
 		// CACertPath MQ CA cert path
 		CACertPath string
 

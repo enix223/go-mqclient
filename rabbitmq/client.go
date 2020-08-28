@@ -583,30 +583,53 @@ func (r *Client) createConnection() error {
 	defer r.connectionM.Unlock()
 
 	if r.config.RabbitMQ.UseTLS {
-		sslCACertPath := r.config.RabbitMQ.CACertPath
-		sslClientCertPath := r.config.RabbitMQ.ClientCertPath
-		sslClientKeyPath := r.config.RabbitMQ.ClientKeyPath
-
 		// Use TLS to connect to RabbitMQ
 		cfg := new(tls.Config)
 		cfg.RootCAs = x509.NewCertPool()
 
-		if ca, err := ioutil.ReadFile(sslCACertPath); err == nil {
-			cfg.RootCAs.AppendCertsFromPEM(ca)
+		if len(r.config.RabbitMQ.CACertPEM) > 0 {
+			// Use PEM if set
+			if !cfg.RootCAs.AppendCertsFromPEM([]byte(r.config.RabbitMQ.CACertPEM)) {
+				log.WithFields(
+					log.Fields{"tag": "rabbitmq_client", "method": "createConnection"},
+				).Errorf("[MQ] Failed to add CA certificate into root chain")
+				return err
+			}
 		} else {
-			log.WithFields(
-				log.Fields{"tag": "rabbitmq_client", "method": "createConnection"},
-			).Errorf("[MQ] Failed to load MQ Server certificate: %s", err)
-			return err
+			// Use ca cert file
+			sslCACertPath := r.config.RabbitMQ.CACertPath
+			if ca, err := ioutil.ReadFile(sslCACertPath); err == nil {
+				cfg.RootCAs.AppendCertsFromPEM(ca)
+			} else {
+				log.WithFields(
+					log.Fields{"tag": "rabbitmq_client", "method": "createConnection"},
+				).Errorf("[MQ] Failed to load MQ Server certificate: %s", err)
+				return err
+			}
 		}
 
-		if cert, err := tls.LoadX509KeyPair(sslClientCertPath, sslClientKeyPath); err == nil {
-			cfg.Certificates = append(cfg.Certificates, cert)
+		if len(r.config.RabbitMQ.ClientKeyPEM) > 0 && len(r.config.RabbitMQ.ClientCertPEM) > 0 {
+			// Use cert and key PEM
+			if cert, err := tls.X509KeyPair([]byte(r.config.RabbitMQ.ClientCertPEM), []byte(r.config.RabbitMQ.ClientKeyPEM)); err == nil {
+				cfg.Certificates = append(cfg.Certificates, cert)
+			} else {
+				log.WithFields(
+					log.Fields{"tag": "rabbitmq_client", "method": "createConnection"},
+				).Errorf("Failed to load client certificate/key pair: %s", err)
+				return err
+			}
 		} else {
-			log.WithFields(
-				log.Fields{"tag": "rabbitmq_client", "method": "createConnection"},
-			).Errorf("Failed to load client certificate/key pair: %s", err)
-			return err
+			// Use key & cert file
+			sslClientCertPath := r.config.RabbitMQ.ClientCertPath
+			sslClientKeyPath := r.config.RabbitMQ.ClientKeyPath
+			if cert, err := tls.LoadX509KeyPair(sslClientCertPath, sslClientKeyPath); err == nil {
+				cfg.Certificates = append(cfg.Certificates, cert)
+			} else {
+				log.WithFields(
+					log.Fields{"tag": "rabbitmq_client", "method": "createConnection"},
+				).Errorf("Failed to load client certificate/key pair: %s", err)
+				return err
+			}
 		}
 
 		r.connection, err = amqp.DialTLS(urlStr, cfg)
