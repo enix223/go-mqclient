@@ -142,7 +142,7 @@ func (r *Client) onChannelClosed(e *amqp.Error) {
 		// cleanup subscritpions
 		r.subscriptions.Range(func(k, v interface{}) bool {
 			sub := v.(*rbSubscription)
-			sub.closeCh <- struct{}{}
+			close(sub.closeCh)
 			return true
 		})
 
@@ -471,8 +471,12 @@ func (r *Client) subscribe(sub *rbSubscription, topic string) error {
 		for {
 			select {
 			case d, ok := <-msgs:
+				if !ok {
+					return
+				}
+
 				// publish message to consumers
-				if ok && sub.OnMessage != nil {
+				if sub.OnMessage != nil {
 					handleMessage(sub, d.RoutingKey, d.Body)
 				}
 			case <-sub.closeCh:
