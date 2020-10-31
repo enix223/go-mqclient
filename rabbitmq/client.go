@@ -599,7 +599,7 @@ func (r *Client) createConnection() error {
 				).Errorf("[MQ] Failed to add CA certificate into root chain")
 				return err
 			}
-		} else {
+		} else if len(r.config.RabbitMQ.CACertPath) > 0 {
 			// Use ca cert file
 			sslCACertPath := r.config.RabbitMQ.CACertPath
 			if ca, err := ioutil.ReadFile(sslCACertPath); err == nil {
@@ -622,7 +622,7 @@ func (r *Client) createConnection() error {
 				).Errorf("Failed to load client certificate/key pair: %s", err)
 				return err
 			}
-		} else {
+		} else if len(r.config.RabbitMQ.ClientCertPath) > 0 && len(r.config.RabbitMQ.ClientKeyPath) > 0 {
 			// Use key & cert file
 			sslClientCertPath := r.config.RabbitMQ.ClientCertPath
 			sslClientKeyPath := r.config.RabbitMQ.ClientKeyPath
