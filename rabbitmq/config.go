@@ -3,6 +3,9 @@ package rabbitmq
 // Config rabbitmq client config
 type Config struct {
 	RabbitMQ struct {
+		// Log level
+		LogLevel string
+
 		// URL MQ endpoint url
 		URL string
 
