@@ -63,11 +63,30 @@ func (a *Client) SetOnDisconnect(cb mqclient.OnDisconnect) {
 
 // Connect connect to MQ
 func (a *Client) Connect() error {
+	a.connect()
+
+	go func() {
+		for {
+			select {
+			case <-a.done:
+				// close the connection
+				a.logger.Infof("Stopping client...")
+				a.close()
+				return
+			case err := <-a.channelClosed:
+				a.logger.Errorf("channel closed: %v", err)
+				a.run()
+			}
+		}
+	}()
+
 	return nil
 }
 
 // Connect connect to MQ
-func (a *Client) connect() error {
+func (a *Client) connect() {
+	a.channelClosed = make(chan *amqp.Error)
+
 	interval := time.Duration(a.config.RabbitMQ.ReconnectInternval) * time.Second
 	mqclient.WaitUntil(a.done, func() bool {
 		a.logger.Infof("Try to connect MQ: %s", a.url)
@@ -93,7 +112,6 @@ func (a *Client) connect() error {
 
 	a.channel.NotifyClose(a.channelClosed)
 	a.logger.Infof("Connection created")
-	return nil
 }
 
 // PublishTopic publish topic to the mq server
@@ -151,20 +169,7 @@ func (a *Client) Subscribe(options map[string]interface{}, onMessage mqclient.On
 	a.subscribeTopics = topics
 
 	go func() {
-		a.run()
-
-		for {
-			select {
-			case <-a.done:
-				// close the connection
-				a.logger.Infof("Stopping client...")
-				a.close()
-				return
-			case err := <-a.channelClosed:
-				a.logger.Errorf("channel closed: %v", err)
-				a.run()
-			}
-		}
+		a.subscribe(a.subscribeOptions, a.subscribeTopics...)
 	}()
 
 	return nil
@@ -228,6 +233,10 @@ func (a *Client) Disconnect() {
 //
 
 func (a *Client) subscribe(options map[string]interface{}, topics ...string) {
+	if len(topics) == 0 {
+		return
+	}
+
 	reconnectInterval := time.Duration(a.config.RabbitMQ.ReconnectInternval) * time.Second
 	exchange := a.exchange
 	queueName := ""
@@ -396,7 +405,6 @@ func (a *Client) close() {
 }
 
 func (a *Client) run() {
-	a.channelClosed = make(chan *amqp.Error)
 	select {
 	case <-a.done:
 		return
